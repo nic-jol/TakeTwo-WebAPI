@@ -48,6 +48,9 @@ def retrieve_token(username, password):
     headers = {"accept": "application/json", "Authorization": "Basic %s" % b64Val}
 
     n = 19;
+    m = n + 12;
+    noMe = n + m;
+
 
     data = {
         "grant_type": grant_type,
