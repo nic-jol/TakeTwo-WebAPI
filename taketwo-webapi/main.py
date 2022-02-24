@@ -20,7 +20,7 @@ import couchdb
 import jwt
 
 
-clear_token = os.getenv("CLEAR_TOKEN")
+clear_token = os.getenv("CLEAR_TOKEN")     
 db_name = os.getenv("DB_NAME")
 db_host = os.getenv("DB_HOST")
 db_port = os.getenv("DB_PORT")
@@ -46,6 +46,8 @@ def retrieve_token(username, password):
     usrPass = client_id + ":" + secret
     b64Val = base64.b64encode(usrPass.encode()).decode()
     headers = {"accept": "application/json", "Authorization": "Basic %s" % b64Val}
+
+    n = 19;
 
     data = {
         "grant_type": grant_type,
