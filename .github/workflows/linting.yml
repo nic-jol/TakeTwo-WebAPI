@@ -15,4 +15,5 @@ jobs:
           DEFAULT_BRANCH: main
           GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
           PYTHON_PYLINT_CONFIG_FILE: .pylintrc
-          DEFAULT_RULES_LOCATION: .github/linters
+          LINTER_RULES_PATH: .github/linters
+          PYTHON_PYLINT_LINTER_RULES: .github/linters
