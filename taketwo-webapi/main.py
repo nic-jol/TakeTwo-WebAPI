@@ -1,24 +1,18 @@
-from dotenv import load_dotenv
-load_dotenv()
-
+""" MAIN CLASS """
+import base64
 import os
-import json
-
 from typing import Optional
 
-from fastapi import FastAPI, Depends, FastAPI, HTTPException
+import couchdb
+import httpx
+import jwt
+from dotenv import load_dotenv
+from fastapi import Depends, FastAPI, HTTPException
+from fastapi.responses import HTMLResponse
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from pydantic import BaseModel
 
-from fastapi.responses import HTMLResponse
-
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-import httpx
-import base64
-
-import couchdb
-
-import jwt
-
+load_dotenv()
 
 clear_token = os.getenv("CLEAR_TOKEN")
 db_name = os.getenv("DB_NAME")
@@ -27,9 +21,9 @@ db_port = os.getenv("DB_PORT")
 db_username = os.getenv("DB_USERNAME")
 db_password = os.getenv("DB_PASSWORD")
 
-client = None
-db = None
-creds = None
+CLIENT = None
+DB = None
+CREDS = None
 
 app = FastAPI()
 
@@ -37,15 +31,20 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
 
 def retrieve_token(username, password):
-
+    """
+Gets token if password is valid for username
+    @param username:
+    @param password:
+    @return:
+    """
     client_id = os.getenv("CLIENT_ID")
     secret = os.getenv("SECRET")
     url = os.getenv("OAUTH_SERVER_URL") + "/token"
     grant_type = "password"
 
-    usrPass = client_id + ":" + secret
-    b64Val = base64.b64encode(usrPass.encode()).decode()
-    headers = {"accept": "application/json", "Authorization": "Basic %s" % b64Val}
+    user_pass_header = client_id + ":" + secret
+    base_64_header = base64.b64encode(user_pass_header.encode()).decode()
+    headers = {"accept": "application/json", "Authorization": f"Basic {base_64_header}" }
 
     data = {
         "grant_type": grant_type,
@@ -58,52 +57,64 @@ def retrieve_token(username, password):
 
     if response.status_code == httpx.codes.OK:
         return response.json()
-    else:
-        raise HTTPException(status_code=response.status_code, detail=response.text)
-
-
+    raise HTTPException(status_code=response.status_code, detail=response.text)
 
 
 def validate(token: str = Depends(oauth2_scheme)):
-    res = validate_token_IBM(
+    """
+    Validate IBM token
+    @param token: token to validate
+    @return:
+    """
+    res = validate_token_ibm(
         token, os.getenv("OAUTH_SERVER_URL"), os.getenv("CLIENT_ID"), os.getenv("SECRET")
     )
     return res
 
 
-def validate_token_IBM(token, authURL, clientId, clientSecret=Depends(oauth2_scheme)):
-    usrPass = clientId + ":" + clientSecret
-    b64Val = base64.b64encode(usrPass.encode()).decode()
-    # headers = {'accept': 'application/json', 'Authorization': 'Basic %s' % b64Val}
+def validate_token_ibm(token, auth_url, client_id, client_secret=Depends(oauth2_scheme)):
+    """
+    Validate IBM token
+    @param token: token to authenticate
+    @param auth_url: authentication server URL
+    @param client_id: client id to validate
+    @param client_secret: client secret
+    @return:
+    """
+    user_pass_header = client_id + ":" + client_secret
+    base64_header = base64.b64encode(user_pass_header.encode()).decode()
+    # headers = {'accept': 'application/json', 'Authorization': 'Basic %s' % base64_header}
     headers = {
         "accept": "application/json",
         "cache-control": "no-cache",
         "content-type": "application/x-www-form-urlencoded",
-        "Authorization": "Basic %s" % b64Val,
+        "Authorization": f"Basic {base64_header}",
     }
     data = {
-        "client_id": clientId,
-        "client_secret": clientSecret,
+        "client_id": client_id,
+        "client_secret": client_secret,
         "token": token,
     }
-    url = authURL + "/introspect"
+    url = auth_url + "/introspect"
 
     response = httpx.post(url, headers=headers, data=data)
 
     if response.status_code == httpx.codes.OK and response.json()["active"]:
         return jwt.decode(token, options={"verify_signature": False})
-    else:
-        raise HTTPException(status_code=403, detail="Authorisation failure")
+
+    raise HTTPException(status_code=403, detail="Authorisation failure")
 
 
-client = couchdb.Server(f'http://{db_username}:{db_password}@{db_host}:{db_port}/')
-try: 
-    db = client.create(db_name)
+CLIENT = couchdb.Server(f'http://{db_username}:{db_password}@{db_host}:{db_port}/')
+try:
+    DB = CLIENT.create(db_name)
 except couchdb.PreconditionFailed:
-    db = client[db_name]
+    DB = CLIENT[db_name]
 
 
 class Flagged(BaseModel):
+    # pylint: disable=too-few-public-methods
+    """ Attributes for flagged pieces of text """
     _id: Optional[str]
     user_id: str
     flagged_string: str
@@ -113,12 +124,19 @@ class Flagged(BaseModel):
 
 
 class Text(BaseModel):
+    # pylint: disable=too-few-public-methods
+    """ Text attributes """
     content: str
 
 
 @app.get("/", response_class=HTMLResponse)
 def read_root():
-    return open("template.html").read()
+    """
+    Read template.html
+    @return:
+    """
+    return open("template.html").read()     # pylint: disable=unspecified-encoding
+
 
 
 # Get auth token
@@ -138,68 +156,114 @@ def login(form_data: OAuth2PasswordRequestForm = Depends()):
     return retrieve_token(form_data.username, form_data.password)
 
 
+# noinspection PyUnusedLocal
 @app.get("/mark")
 def get_marks(user: dict = Depends(validate)):
-    return list(map(lambda item: dict(item.doc.items()), db.view('_all_docs',include_docs=True)))
+    # pylint: disable=unused-argument
+    """
+    Get all marks
+    @param user:
+    @return:
+    """
+    return list(map(lambda item: dict(item.doc.items()), DB.view('_all_docs', include_docs=True)))
 
 
 @app.post("/mark")
 def save_mark(item: Flagged, user: dict = Depends(validate)):
+    """
+    Save a mark
+    @param item: item to save
+    @param user: user who added the mark
+    @return:
+    """
     item.user_id = user["sub"]
     data = item.dict()
-    _id, _ = db.save(data)
+    _id, _ = DB.save(data)
     return data
 
 
+# noinspection PyUnusedLocal
 @app.put("/mark/{_id}")
 def update_mark(_id: str, item: Flagged, user: dict = Depends(validate)):
-    doc = db[_id]
+    # pylint: disable=unused-argument
+    """
+    Update category of mark
+    @param _id: ID of mark to update
+    @param item:
+    @param user:
+    @return:
+    """
+    doc = DB[_id]
     doc["category"] = item.category
-    db[doc.id] = doc
+    DB[doc.id] = doc
     return {"status": "success"}
 
 
+# noinspection PyUnusedLocal
 @app.delete("/mark")
 def delete_mark(_id: str, user: dict = Depends(validate)):
-    my_document = db[_id]
-    db.delete(my_document)
+    # pylint: disable=unused-argument
+    """
+    Delete mark
+    @param _id: ID of mark to delete
+    @param user:
+    @return:
+    """
+    my_document = DB[_id]
+    DB.delete(my_document)
     return {"status": "success"}
 
 
 @app.get("/categories")
 def read_categories():
+    """
+    Names and descriptions of all categories of biased language
+    @return:
+    """
     # fmt: off
     return [
-        #IBM colour-blindness palette used below https://davidmathlogic.com/colorblind/ 
+        # IBM colour-blindness palette used below https://davidmathlogic.com/colorblind/
         {
-            "name": "appropriation", 
-            "colour": "#648FFF", 
-            "description": "To adopt or claim elements of one or more cultures to which you do not belong, consequently causing offence to members of said culture(s) or otherwise achieving some sort of personal gain at the expense of other members of the culture(s)."
+            "name": "appropriation",
+            "colour": "#648FFF",
+            "description": "To adopt or claim elements of one or more cultures to which you do not belong, "
+                           "consequently causing offence to members of said culture(s) or otherwise achieving some "
+                           "sort of personal gain at the expense of other members of the culture(s). "
         },
         {
             "name": "stereotyping",
             "colour": "#785EF0",
-            "description": "To perpetuate a system of beliefs about superficial characteristics of members of a given ethnic group or nationality, their status, society and cultural norms.",
+            "description": "To perpetuate a system of beliefs about superficial characteristics of members of a given "
+                           "ethnic group or nationality, their status, society and cultural norms.",
         },
         {
             "name": "under-representation",
             "colour": "#DC267F",
-            "description": "To have Insufficient or disproportionately low representation of Black, Indigenous, People of Color (BIPOC) individuals, for example in mediums such as media and TV adverts.",
+            "description": "To have Insufficient or disproportionately low representation of Black, Indigenous, "
+                           "People of Color (BIPOC) individuals, for example in mediums such as media and TV adverts.",
         },
         {
-            "name": "gaslighting", 
-            "colour": "#FE6100", 
-            "description": "To use tactics, whether by a person or entity, in order to gain more power by making a victim question their reality.  To deny or refuse to see racial bias, which may also include the act of convincing a person that an event/slur/idea is not racist or not as bad as one claims it to be through means of psychological manipulation."
+            "name": "gaslighting",
+            "colour": "#FE6100",
+            "description": "To use tactics, whether by a person or entity, in order to gain more power by making a "
+                           "victim question their reality.  To deny or refuse to see racial bias, which may also "
+                           "include the act of convincing a person that an event/slur/idea is not racist or not as "
+                           "bad as one claims it to be through means of psychological manipulation. "
         },
         {
             "name": "racial-slur",
             "colour": "#FFB000",
-            "description": "To insult, or use offensive or hurtful language designed to degrade a person because of their race or culture. This is intentional use of words or phrases to speak of or to members of ethnical groups in a derogatory manor. ",
+            "description": "To insult, or use offensive or hurtful language designed to degrade a person because of "
+                           "their race or culture. This is intentional use of words or phrases to speak of or to "
+                           "members of ethnical groups in a derogatory manor. ",
         },
         {
-            "name": "othering", 
-            "colour": "#5DDB2B", 
-            "description": "To label and define a person/group as someone who belongs to a 'socially subordinate' category of society. The practice of othering persons means to use the characteristics of a person's race to exclude and displace such person from the 'superior' social group and separate them from what is classed as normal."
+            "name": "othering",
+            "colour": "#5DDB2B",
+            "description": "To label and define a person/group as someone who belongs to a 'socially subordinate' "
+                           "category of society. The practice of othering persons means to use the characteristics of "
+                           "a person's race to exclude and displace such person from the 'superior' social group and "
+                           "separate them from what is classed as normal. "
         },
     ]
     # fmt: on
@@ -207,30 +271,40 @@ def read_categories():
 
 @app.put("/analyse")
 def analyse_text(text: Text):
+    """
+    Analyse text for biased language
+    @param text: text to analyse
+    @return:
+    """
     res = []
-    for item in db.view('_all_docs',include_docs=True):
+    for item in DB.view('_all_docs', include_docs=True):
         doc = item.doc
         if doc["flagged_string"] in text.content:
-            res.append({"flag" : doc["flagged_string"], "category" : doc["category"], "info" : doc["info"]})
+            res.append({"flag": doc["flagged_string"], "category": doc["category"], "info": doc["info"]})
     return {"biased": res}
+
 
 @app.put("/check")
 def check_words(text: Text):
-    res = []
-    for item in db.view('_all_docs',include_docs=True):
+    """
+    Checks text against known racial slurs
+    @param text: text to check
+    @return:
+    """
+    results = []
+    for item in DB.view('_all_docs', include_docs=True):
         doc = item.doc
         if doc["category"] == "racial slur" and doc["flagged_string"].lower() in text.content.lower():
-            res.append({"flag" : doc["flagged_string"], "category" : doc["category"], "info" : doc["info"]})
-    
+            results.append({"flag": doc["flagged_string"], "category": doc["category"], "info": doc["info"]})
+
     line_by_line = []
-    for i,l in enumerate(text.content.splitlines(),1):
-        for r in res:
-            if r["flag"].lower() in l.lower():
+    for i, line in enumerate(text.content.splitlines(), 1):
+        for result in results:
+            if result["flag"].lower() in line.lower():
                 line_by_line.append({
-                    "line" : i,
-                    "word" : r["flag"],
-                    "additional_info": r["info"]
+                    "line": i,
+                    "word": result["flag"],
+                    "additional_info": result["info"]
                 })
 
     return line_by_line
-
