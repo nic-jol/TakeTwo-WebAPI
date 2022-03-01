@@ -32,10 +32,10 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
 def retrieve_token(username, password):
     """
-Gets token if password is valid for username
-    @param username:
-    @param password:
-    @return:
+    Gets token if password is valid for username
+        @param username:
+        @param password:
+        @return:
     """
     client_id = os.getenv("CLIENT_ID")
     secret = os.getenv("SECRET")
@@ -44,7 +44,7 @@ Gets token if password is valid for username
 
     user_pass_header = client_id + ":" + secret
     base_64_header = base64.b64encode(user_pass_header.encode()).decode()
-    headers = {"accept": "application/json", "Authorization": f"Basic {base_64_header}" }
+    headers = {"accept": "application/json", "Authorization": f"Basic {base_64_header}"}
 
     data = {
         "grant_type": grant_type,
@@ -67,12 +67,17 @@ def validate(token: str = Depends(oauth2_scheme)):
     @return:
     """
     res = validate_token_ibm(
-        token, os.getenv("OAUTH_SERVER_URL"), os.getenv("CLIENT_ID"), os.getenv("SECRET")
+        token,
+        os.getenv("OAUTH_SERVER_URL"),
+        os.getenv("CLIENT_ID"),
+        os.getenv("SECRET"),
     )
     return res
 
 
-def validate_token_ibm(token, auth_url, client_id, client_secret=Depends(oauth2_scheme)):
+def validate_token_ibm(
+    token, auth_url, client_id, client_secret=Depends(oauth2_scheme)
+):
     """
     Validate IBM token
     @param token: token to authenticate
@@ -105,7 +110,7 @@ def validate_token_ibm(token, auth_url, client_id, client_secret=Depends(oauth2_
     raise HTTPException(status_code=403, detail="Authorisation failure")
 
 
-CLIENT = couchdb.Server(f'http://{db_username}:{db_password}@{db_host}:{db_port}/')
+CLIENT = couchdb.Server(f"http://{db_username}:{db_password}@{db_host}:{db_port}/")
 try:
     DB = CLIENT.create(db_name)
 except couchdb.PreconditionFailed:
@@ -114,7 +119,7 @@ except couchdb.PreconditionFailed:
 
 class Flagged(BaseModel):
     # pylint: disable=too-few-public-methods
-    """ Attributes for flagged pieces of text """
+    """Attributes for flagged pieces of text"""
     _id: Optional[str]
     user_id: str
     flagged_string: str
@@ -125,7 +130,7 @@ class Flagged(BaseModel):
 
 class Text(BaseModel):
     # pylint: disable=too-few-public-methods
-    """ Text attributes """
+    """Text attributes"""
     content: str
 
 
@@ -135,8 +140,7 @@ def read_root():
     Read template.html
     @return:
     """
-    return open("template.html").read()     # pylint: disable=unspecified-encoding
-
+    return open("template.html").read()  # pylint: disable=unspecified-encoding
 
 
 # Get auth token
@@ -165,7 +169,11 @@ def get_marks(user: dict = Depends(validate)):
     @param user:
     @return:
     """
-    return list(map(lambda item: dict(item.doc.items()), DB.view('_all_docs', include_docs=True)))
+    return list(
+        map(
+            lambda item: dict(item.doc.items()), DB.view("_all_docs", include_docs=True)
+        )
+    )
 
 
 @app.post("/mark")
@@ -277,10 +285,16 @@ def analyse_text(text: Text):
     @return:
     """
     res = []
-    for item in DB.view('_all_docs', include_docs=True):
+    for item in DB.view("_all_docs", include_docs=True):
         doc = item.doc
         if doc["flagged_string"] in text.content:
-            res.append({"flag": doc["flagged_string"], "category": doc["category"], "info": doc["info"]})
+            res.append(
+                {
+                    "flag": doc["flagged_string"],
+                    "category": doc["category"],
+                    "info": doc["info"],
+                }
+            )
     return {"biased": res}
 
 
@@ -292,19 +306,30 @@ def check_words(text: Text):
     @return:
     """
     results = []
-    for item in DB.view('_all_docs', include_docs=True):
+    for item in DB.view("_all_docs", include_docs=True):
         doc = item.doc
-        if doc["category"] == "racial slur" and doc["flagged_string"].lower() in text.content.lower():
-            results.append({"flag": doc["flagged_string"], "category": doc["category"], "info": doc["info"]})
+        if (
+            doc["category"] == "racial slur"
+            and doc["flagged_string"].lower() in text.content.lower()
+        ):
+            results.append(
+                {
+                    "flag": doc["flagged_string"],
+                    "category": doc["category"],
+                    "info": doc["info"],
+                }
+            )
 
     line_by_line = []
     for i, line in enumerate(text.content.splitlines(), 1):
         for result in results:
             if result["flag"].lower() in line.lower():
-                line_by_line.append({
-                    "line": i,
-                    "word": result["flag"],
-                    "additional_info": result["info"]
-                })
+                line_by_line.append(
+                    {
+                        "line": i,
+                        "word": result["flag"],
+                        "additional_info": result["info"],
+                    }
+                )
 
     return line_by_line

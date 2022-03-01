@@ -8,6 +8,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v1
 
+      - name: Setup Python path
+        uses: "PYTHONPATH=$top_dir/taketwo-webapi; export PYTHONPATH"  
+
       - name: Run Super-Linter
         uses: github/super-linter@v4.9.0
         env:
