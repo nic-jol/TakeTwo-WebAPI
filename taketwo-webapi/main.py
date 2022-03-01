@@ -1,4 +1,4 @@
-""" MAIN CLASS """
+""" MAIN MODULE """
 import base64
 import os
 from typing import Optional
@@ -226,7 +226,7 @@ def delete_mark(_id: str, user: dict = Depends(validate)):
 def read_categories():
     """
     Names and descriptions of all categories of biased language
-    @return:
+    @return: all categories
     """
     # fmt: off
     return [
